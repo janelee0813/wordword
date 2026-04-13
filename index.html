@@ -443,7 +443,7 @@ strong { font-weight: 700; color: var(--text); }
       </div>
 
       <button id="convert-btn" onclick="convertSermon()">
-        ✦ AI로 설교 요약집 만들기
+        ✦ 설교 요약집 만들기
       </button>
     </div>
   </div>
@@ -632,7 +632,7 @@ async function clearAllSermons() {
 }
 
 /* ════════════════════════════════════
-   AI 설교 변환
+   설교 변환 & 등록
 ════════════════════════════════════ */
 async function convertSermon() {
   const notes = document.getElementById('input-notes').value.trim();
@@ -642,103 +642,18 @@ async function convertSermon() {
   const status = document.getElementById('ai-status');
   btn.disabled = true;
   status.classList.add('show');
-  document.getElementById('ai-status-text').textContent = 'AI가 메모를 분석하고 있어요...';
-
-  const prompt = `당신은 주일 설교 메모를 아름다운 전자책 HTML로 변환하는 전문가입니다.
-
-아래 설교 메모에서 날짜, 제목, 본문 구절, 시리즈 정보를 자동으로 파악하고,
-HTML 콘텐츠와 메타 정보를 JSON으로 반환해주세요.
-
-## 설교 메모
-${notes}
-
-## 반환 형식 (JSON만, 설명 없이, 코드블록 없이)
-{
-  "date": "2026년 4월 5일",
-  "title": "설교 제목",
-  "verse": "사도행전 20:22-24",
-  "series": "시리즈명 또는 주일 설교",
-  "content": "HTML 콘텐츠 문자열"
-}
-
-## content에 사용할 HTML 컴포넌트
-<div class="section-label">섹션명</div>
-<div class="section-big-title">큰 제목</div>
-<div class="q-heading">소제목</div>
-<div class="conclusion-heading">결론</div>
-<div class="con-item-title">결론 항목</div>
-<div class="scripture"><span class="scripture-ref">행 20:24</span><div class="scripture-text">내용</div></div>
-<p class="body">본문</p>
-<span class="orange-mark">주황 강조</span>
-<span class="orange-chip">주황 칩</span>
-<span class="orange">주황 텍스트</span>
-<strong>굵게</strong>
-<div class="section-divider"></div>
-<div class="closing-section"><div style="font-size:18px;color:rgba(255,255,255,0.15);margin-bottom:16px;">✝</div><div class="closing-title">핵심 메시지</div><div class="closing-divider-el"></div><div class="closing-body">마무리 권면</div></div>
-
-## 규칙
-- [요20:25] 형식 → scripture 블록
-- 날짜가 없으면 오늘 날짜로 추정
-- 제목이 없으면 내용에서 핵심 주제로 생성
-- section-label로 섹션 명확히 구분
-- 마지막에 반드시 closing-section 포함`;
+  document.getElementById('ai-status-text').textContent = '메모를 변환하고 있어요...';
 
   try {
-    document.getElementById('ai-status-text').textContent = 'AI가 구성 중이에요... (10~20초)';
-
-    const res = await fetch('/api/convert', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 4000,
-        messages: [{ role: 'user', content: prompt }]
-      })
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      if (res.status === 401) throw new Error('API 키가 올바르지 않아요');
-      if (res.status === 403) throw new Error('CORS');
-      throw new Error(err?.error?.message || `오류 ${res.status}`);
-    }
-
-    const data = await res.json();
-    const raw = data.content.map(c => c.text || '').join('').replace(/```json|```/g, '').trim();
-    const parsed = JSON.parse(raw);
-
-    const newSermon = {
-      id: 'u' + Date.now(),
-      date: parsed.date || today(),
-      title: parsed.title || '설교',
-      verse: parsed.verse || '',
-      series: parsed.series || '주일 설교',
-      content: parsed.content || ''
-    };
-    await insertSermon(newSermon);
+    const sermon = parseNotesFallback(notes);
+    await insertSermon(sermon);
     document.getElementById('input-notes').value = '';
     showToast('✓ 설교 요약집이 등록되었어요!');
     showView('home-view');
-    openSermon(newSermon.id);
-
+    openSermon(sermon.id);
   } catch(e) {
     console.error(e);
-    if (e.message === 'CORS' || e.message?.includes('Failed to fetch') || e.message?.includes('NetworkError')) {
-      showToast('AI 연결 실패 — 메모를 직접 변환합니다');
-      document.getElementById('ai-status-text').textContent = '메모를 변환하고 있어요...';
-      await new Promise(r => setTimeout(r, 400));
-      try {
-        const fallback = parseNotesFallback(notes);
-        await insertSermon(fallback);
-        document.getElementById('input-notes').value = '';
-        showToast('✓ 등록됐어요 (기본 변환)');
-        showView('home-view');
-        openSermon(fallback.id);
-        return;
-      } catch { showToast('변환 중 오류가 발생했어요'); }
-    } else {
-      showToast('오류: ' + (e.message || 'API 키를 확인해주세요'));
-    }
+    showToast('오류가 발생했어요. 다시 시도해주세요.');
   } finally {
     btn.disabled = false;
     status.classList.remove('show');
