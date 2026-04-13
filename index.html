@@ -112,11 +112,11 @@ html, body {
 
 .book-cover-title {
   font-family: 'Noto Serif KR', serif;
-  font-size: 11px; font-weight: 700;
-  color: rgba(255,255,255,0.95);
-  line-height: 1.45; word-break: keep-all;
+  font-size: 13px; font-weight: 700;
+  color: rgba(255,255,255,1);
+  line-height: 1.5; word-break: keep-all;
   position: relative; z-index: 1;
-  text-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  text-shadow: 0 1px 4px rgba(0,0,0,0.5);
 }
 
 .book-cover-verse {
@@ -587,7 +587,6 @@ async function renderHome() {
       <div class="book-card" onclick="openSermon('${s.id}')">
         <div class="book-cover" style="background:${color};">
           <div class="book-pattern ${pattern}"></div>
-          <div class="book-cross">✝</div>
           <div class="book-cover-title">${s.title}</div>
           <div class="book-cover-verse">${s.verse || ''}</div>
         </div>
