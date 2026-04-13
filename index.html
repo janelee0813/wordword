@@ -9,6 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@300;400;600;700;900&family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 
@@ -455,27 +456,10 @@ strong { font-weight: 700; color: var(--text); }
     </div>
     <div class="settings-body">
 
-      <div>
-        <div class="field-label" style="margin-bottom:10px;">API 키 상태</div>
-        <div id="api-badge"></div>
-      </div>
-
       <div class="api-info-box">
-        <strong>Claude API 키 발급 방법</strong>
-        <div class="api-info-step">
-          <div class="api-info-step-item"><div class="step-num">1</div><div>console.anthropic.com 접속 후 로그인</div></div>
-          <div class="api-info-step-item"><div class="step-num">2</div><div>API Keys → Create Key</div></div>
-          <div class="api-info-step-item"><div class="step-num">3</div><div>발급된 키를 아래에 입력 후 저장</div></div>
-        </div>
-      </div>
-
-      <div>
-        <div class="field-label" style="margin-bottom:8px;">Claude API 키</div>
-        <div class="api-key-field">
-          <input type="password" id="api-key-input" class="api-field-input" placeholder="sk-ant-...">
-          <button class="save-api-btn" onclick="saveApiKey()">저장</button>
-        </div>
-        <div class="field-hint" style="margin-top:8px;">이 기기에만 저장돼요 · 로컬 파일에서는 CORS로 AI 연결이 안 될 수 있어요</div>
+        <strong>주일 설교 요약집</strong><br>
+        설교 메모를 AI가 아름다운 전자책으로 변환해드려요.<br>
+        등록한 설교는 모든 기기에서 공유됩니다.
       </div>
 
       <div style="border-top:1px solid var(--border); padding-top:20px;">
@@ -538,14 +522,23 @@ const BOOK_COLORS = [
 const BOOK_PATTERNS = ['book-pattern-cross','book-pattern-dots','book-pattern-lines',''];
 
 /* ════════════════════════════════════
-   로컬스토리지
+   Supabase
 ════════════════════════════════════ */
-function loadSermons() {
-  try { return JSON.parse(localStorage.getItem('sermons_v3') || '[]'); } catch { return []; }
+const _sb = window.supabase.createClient(
+  'https://meanhowhkrissyujstkb.supabase.co',
+  'sb_publishable_WeG11W1N_tR5_6GI8yxl7Q_0DWCeTkt'
+);
+
+async function loadSermons() {
+  const { data, error } = await _sb.from('sermons').select('*').order('created_at', { ascending: false });
+  if (error) { console.error(error); return []; }
+  return data || [];
 }
-function saveSermons(list) { localStorage.setItem('sermons_v3', JSON.stringify(list)); }
-function loadApiKey() { return localStorage.getItem('claude_api_key') || ''; }
-function saveApiKeyToStorage(key) { localStorage.setItem('claude_api_key', key); }
+
+async function insertSermon(sermon) {
+  const { error } = await _sb.from('sermons').insert(sermon);
+  if (error) throw error;
+}
 
 /* ════════════════════════════════════
    뷰 전환
@@ -569,9 +562,11 @@ function showView(id) {
 /* ════════════════════════════════════
    홈 렌더링 — 책 그리드
 ════════════════════════════════════ */
-function renderHome() {
-  const list = loadSermons();
+async function renderHome() {
   const grid = document.getElementById('sermon-list');
+  grid.innerHTML = '<div class="empty-state"><div class="empty-icon" style="opacity:0.15;font-size:32px;">✝</div></div>';
+
+  const list = await loadSermons();
 
   if (list.length === 0) {
     grid.innerHTML = `
@@ -604,9 +599,9 @@ function renderHome() {
 /* ════════════════════════════════════
    설교 열기
 ════════════════════════════════════ */
-function openSermon(id) {
-  const s = loadSermons().find(x => x.id === id);
-  if (!s) return;
+async function openSermon(id) {
+  const { data: s, error } = await _sb.from('sermons').select('*').eq('id', id).single();
+  if (error || !s) return;
 
   document.getElementById('nav-title').textContent = s.title;
   document.getElementById('nav-verse').textContent = s.verse || '';
@@ -626,37 +621,20 @@ function openSermon(id) {
 /* ════════════════════════════════════
    설정
 ════════════════════════════════════ */
-function renderSettings() {
-  const key = loadApiKey();
-  const badge = document.getElementById('api-badge');
-  badge.innerHTML = key
-    ? `<span class="api-status-badge set">✓ 등록됨 (sk-ant-...${key.slice(-4)})</span>`
-    : `<span class="api-status-badge unset">⚠ 미등록</span>`;
-  document.getElementById('api-key-input').value = key ? '••••••••••••••••' : '';
-}
+function renderSettings() {}
 
-function saveApiKey() {
-  const val = document.getElementById('api-key-input').value.trim();
-  if (!val || val.startsWith('•')) { showToast('새 API 키를 입력해주세요'); return; }
-  if (!val.startsWith('sk-ant-')) { showToast('올바른 Claude API 키 형식이 아니에요'); return; }
-  saveApiKeyToStorage(val);
-  renderSettings();
-  showToast('✓ API 키가 저장되었어요');
-}
-
-function clearAllSermons() {
+async function clearAllSermons() {
   if (!confirm('등록된 모든 설교를 삭제할까요?')) return;
-  localStorage.removeItem('sermons_v3');
+  const { error } = await _sb.from('sermons').delete().neq('id', '');
+  if (error) { showToast('오류가 발생했어요'); return; }
   showToast('초기화됐어요');
+  renderHome();
 }
 
 /* ════════════════════════════════════
    AI 설교 변환
 ════════════════════════════════════ */
 async function convertSermon() {
-  const apiKey = loadApiKey();
-  if (!apiKey) { showToast('먼저 설정에서 API 키를 등록해주세요'); showView('settings-view'); return; }
-
   const notes = document.getElementById('input-notes').value.trim();
   if (!notes) { showToast('설교 메모를 입력해주세요'); return; }
 
@@ -708,14 +686,9 @@ ${notes}
   try {
     document.getElementById('ai-status-text').textContent = 'AI가 구성 중이에요... (10~20초)';
 
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetch('/api/convert', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-request-origin': 'true'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 4000,
@@ -742,9 +715,7 @@ ${notes}
       series: parsed.series || '주일 설교',
       content: parsed.content || ''
     };
-    const list = loadSermons();
-    list.unshift(newSermon);
-    saveSermons(list);
+    await insertSermon(newSermon);
     document.getElementById('input-notes').value = '';
     showToast('✓ 설교 요약집이 등록되었어요!');
     showView('home-view');
@@ -758,9 +729,7 @@ ${notes}
       await new Promise(r => setTimeout(r, 400));
       try {
         const fallback = parseNotesFallback(notes);
-        const list = loadSermons();
-        list.unshift(fallback);
-        saveSermons(list);
+        await insertSermon(fallback);
         document.getElementById('input-notes').value = '';
         showToast('✓ 등록됐어요 (기본 변환)');
         showView('home-view');
